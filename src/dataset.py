@@ -25,32 +25,16 @@ class DeepCoNNDataset(Dataset):
     def __init__(
         self,
         df: pd.DataFrame,
-        user_docs: dict,
-        item_docs: dict,
-        vocab: dict,
+        user_encoded: np.ndarray,
+        item_encoded: np.ndarray,
         max_len: int = 200,
     ):
         self.users = df["user_idx"].values
         self.items = df["item_idx"].values
         self.ratings = df["rating"].values.astype(np.float32)
         self.max_len = max_len
-        self.vocab = vocab
-        self.unk_id = vocab.get("<unk>", 0)
-        self.pad_id = vocab.get("<pad>", 1)
-
-        # Mã hóa sẵn toàn bộ document
-        self.user_encoded = self._encode_docs(user_docs)
-        self.item_encoded = self._encode_docs(item_docs)
-
-    def _encode_docs(self, docs: dict) -> dict:
-        encoded = {}
-        for idx, text in docs.items():
-            tokens = str(text).lower().split()[: self.max_len]
-            ids = [self.vocab.get(t, self.unk_id) for t in tokens]
-            if len(ids) < self.max_len:
-                ids += [self.pad_id] * (self.max_len - len(ids))
-            encoded[idx] = np.asarray(ids, dtype=np.int32)
-        return encoded
+        self.user_encoded = user_encoded
+        self.item_encoded = item_encoded
 
     def __len__(self):
         return len(self.ratings)
@@ -58,14 +42,29 @@ class DeepCoNNDataset(Dataset):
     def __getitem__(self, i):
         u = int(self.users[i])
         it = int(self.items[i])
-        u_ids = self.user_encoded.get(
-            u, np.full(self.max_len, self.pad_id, dtype=np.int32)
-        )
-        i_ids = self.item_encoded.get(
-            it, np.full(self.max_len, self.pad_id, dtype=np.int32)
-        )
         return (
-            torch.from_numpy(u_ids),
-            torch.from_numpy(i_ids),
+            torch.from_numpy(self.user_encoded[u].astype(np.int64)),
+            torch.from_numpy(self.item_encoded[it].astype(np.int64)),
             torch.tensor(self.ratings[i], dtype=torch.float32),
         )
+
+
+def encode_review_docs(
+    docs: dict, vocab: dict, num_docs: int, max_len: int
+) -> np.ndarray:
+    """Encode review documents into a compact, ID-indexed array."""
+    pad_id = vocab["<pad>"]
+    unk_id = vocab["<unk>"]
+    max_token_id = max(vocab.values())
+    dtype = np.uint16 if max_token_id <= np.iinfo(np.uint16).max else np.uint32
+    encoded = np.full((num_docs, max_len), pad_id, dtype=dtype)
+
+    for doc_id, text in docs.items():
+        doc_id = int(doc_id)
+        if not 0 <= doc_id < num_docs:
+            raise ValueError(f"Review ID ngoài phạm vi: {doc_id}")
+        tokens = str(text).lower().split()[:max_len]
+        encoded[doc_id, : len(tokens)] = [
+            vocab.get(token, unk_id) for token in tokens
+        ]
+    return encoded

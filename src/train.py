@@ -9,7 +9,7 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
     total_loss = 0.0
     for a, b, y in loader:
         a, b, y = a.to(device), b.to(device), y.to(device)
-        pred = torch.clamp(model(a, b), 1.0, 5.0)
+        pred = model(a, b)
         loss = criterion(pred, y)
         optimizer.zero_grad()
         loss.backward()

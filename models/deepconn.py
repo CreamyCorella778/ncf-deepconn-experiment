@@ -38,11 +38,18 @@ class DeepCoNNModel(nn.Module):
     def forward(self, user_ids, item_ids):
         u = self._branch(user_ids, self.user_conv, self.user_fc)
         i = self._branch(item_ids, self.item_conv, self.item_fc)
+        return self._combine(u, i)
 
+    def score_candidates(self, user_ids, item_ids):
+        """Score multiple item review documents per user without repeating its CNN."""
+        batch_size, candidate_count, max_len = item_ids.shape
+        u = self._branch(user_ids, self.user_conv, self.user_fc)
+        flat_items = item_ids.reshape(batch_size * candidate_count, max_len)
+        i = self._branch(flat_items, self.item_conv, self.item_fc)
+        i = i.reshape(batch_size, candidate_count, -1)
+        u = u.unsqueeze(1).expand_as(i)
+        return self._combine(u, i)
+
+    def _combine(self, u, i):
         linear_out = self.fm_linear(torch.cat([u, i], dim=-1)).squeeze(-1)
-
-        v = torch.stack([u, i], dim=1)
-        sum_v = v.sum(dim=1)
-        sum_v_sq = (v**2).sum(dim=1)
-        fm_factor = 0.5 * (sum_v**2 - sum_v_sq).sum(dim=-1)
-        return linear_out + fm_factor
+        return linear_out + torch.sum(u * i, dim=-1)

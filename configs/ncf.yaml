@@ -2,7 +2,8 @@ model: ncf
 seed: 42
 
 data:
-  dir: data/processed
+  dir: data/processed/amazon
+  dataset: amazon
   train_file: train_ratings.parquet
   val_file: val_ratings.parquet
   test_file: test_ratings.parquet
@@ -11,6 +12,11 @@ model_params:
   gmf_dim: 32
   mlp_dims: [64, 32, 16]
   dropout: 0.2
+
+evaluation:
+  k: 10
+  negatives_per_positive: 99
+  batch_users: 256
 
 training:
   epochs: 20

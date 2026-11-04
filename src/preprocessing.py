@@ -59,3 +59,23 @@ def build_vocab(
     for i, w in enumerate(most_common, start=2):
         vocab[w] = i
     return vocab
+
+
+def load_review_pickle(path: str) -> dict:
+    """Đọc file pickle dạng dict hoặc stream tuple (id, doc)."""
+    with open(path, "rb") as f:
+        try:
+            obj = pickle.load(f)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+    result = {}
+    with open(path, "rb") as f:
+        while True:
+            try:
+                k, v = pickle.load(f)
+                result[k] = v
+            except EOFError:
+                break
+    return result
