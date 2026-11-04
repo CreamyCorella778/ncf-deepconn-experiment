@@ -2,5 +2,6 @@ datasets
 numpy
 pandas
 pyarrow
+scikit-learn
 PyYAML
 torch
