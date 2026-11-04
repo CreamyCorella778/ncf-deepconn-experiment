@@ -1,0 +1,30 @@
+model: deepconn
+seed: 42
+
+data:
+  dir: data/processed
+  train_file: train_ratings.parquet
+  val_file: val_ratings.parquet
+  test_file: test_ratings.parquet
+  user_reviews: user_reviews.pkl
+  item_reviews: item_reviews.pkl
+
+model_params:
+  embed_dim: 100
+  out_channels: 64
+  kernel_size: 3
+  latent_dim: 32
+  dropout: 0.3
+  max_len: 200
+  min_freq: 2
+  max_vocab: 50000
+
+training:
+  epochs: 20
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 1.0e-5
+  patience: 5
+  num_workers: 0
+  checkpoint: best_deepconn.pt
+  device: auto

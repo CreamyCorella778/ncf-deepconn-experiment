@@ -1,0 +1,23 @@
+model: ncf
+seed: 42
+
+data:
+  dir: data/processed
+  train_file: train_ratings.parquet
+  val_file: val_ratings.parquet
+  test_file: test_ratings.parquet
+
+model_params:
+  gmf_dim: 32
+  mlp_dims: [64, 32, 16]
+  dropout: 0.2
+
+training:
+  epochs: 20
+  batch_size: 256
+  lr: 0.001
+  weight_decay: 1.0e-5
+  patience: 5
+  num_workers: 0
+  checkpoint: best_ncf.pt
+  device: auto   # auto | cpu | cuda
