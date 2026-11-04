@@ -26,7 +26,7 @@ evaluation:
   batch_users: 8
 
 training:
-  epochs: 20
+  epochs: 5
   batch_size: 128
   lr: 0.001
   weight_decay: 1.0e-5
