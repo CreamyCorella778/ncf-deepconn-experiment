@@ -35,6 +35,10 @@ python run_compare.py --config configs/ncf.yaml
 python run_compare.py --config configs/deepconn.yaml
 ```
 
+The `data.dataset` value must match the name of the directory in `data.dir`.
+Relative data paths are resolved from the repository root, and the runner
+prints the selected dataset and absolute data directory before training.
+
 Pass both config paths with repeated `--config` options to run and compare
 both models. Test output includes RMSE, MAE, HR@10, and NDCG@10. Ranking
 metrics use one held-out positive and 99 reproducibly sampled items that the

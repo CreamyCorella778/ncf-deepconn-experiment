@@ -14,7 +14,13 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from src.utils import set_seed, get_device, load_config, get_num_workers
+from src.utils import (
+    set_seed,
+    get_device,
+    load_config,
+    get_num_workers,
+    resolve_data_dir,
+)
 from src.preprocessing import (
     load_ratings,
     infer_num_ids,
@@ -151,10 +157,16 @@ def build_deepconn(cfg, device):
 
 def run_one(cfg_path: str):
     cfg = load_config(cfg_path)
+    project_root = Path(__file__).resolve().parent
+    data_dir = resolve_data_dir(cfg["data"], project_root)
+    cfg["data"]["dir"] = str(data_dir)
     set_seed(cfg.get("seed", 42))
     device = get_device(cfg["training"].get("device", "auto"))
+    dataset_name = cfg["data"].get("dataset", "unspecified")
     print(
-        f"\n{'='*60}\n>>> Cấu hình: {cfg_path} | Model: {cfg['model']} | Device: {device}\n{'='*60}"
+        f"\n{'='*60}\n>>> Cấu hình: {cfg_path} | Model: {cfg['model']} | "
+        f"Dataset: {dataset_name} | Data dir: {data_dir} | Device: {device}\n"
+        f"{'='*60}"
     )
 
     if cfg["model"] == "ncf":
