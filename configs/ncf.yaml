@@ -1,5 +1,8 @@
 model: ncf
 seed: 42
+wandb:
+  enabled: false
+  project: ncf-deepconn-experiment
 
 data:
   dir: data/processed/amazon
@@ -17,13 +20,14 @@ evaluation:
   k: 10
   negatives_per_positive: 99
   batch_users: 256
+  negatives_file: data/processed/test_negatives.pkl
 
 training:
   epochs: 15
   batch_size: 256
   lr: 0.001
   weight_decay: 1.0e-5
-  patience: 5
+  patience: 3
   num_workers: 0
   checkpoint: best_ncf.pt
   device: auto   # auto | cpu | cuda

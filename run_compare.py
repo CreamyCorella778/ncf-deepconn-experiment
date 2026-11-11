@@ -28,13 +28,14 @@ from src.preprocessing import (
     load_review_pickle,
 )
 from src.dataset import NCFDataset, DeepCoNNDataset, encode_review_docs
+from src.embeddings import build_embedding_matrix
 from src.metrics import (
     build_seen_items_index,
     evaluate_rmse_mae,
     evaluate_sampled_ranking,
 )
-from src.train import fit
-from src.evaluate import evaluate_test
+from src.train import fit, finish_wandb
+from src.evaluate import evaluate_test, load_test_negatives
 from models import NCFModel, DeepCoNNModel
 
 
@@ -102,6 +103,21 @@ def build_deepconn(cfg, device):
         user_docs, item_docs, min_freq=mp["min_freq"], max_size=mp["max_vocab"]
     )
     print(f"[DeepCoNN] Vocab size = {len(vocab):,}")
+    pretrained_emb = None
+    glove_file = mp.get("glove_file")
+    if glove_file:
+        glove_path = Path(glove_file)
+        if not glove_path.is_absolute():
+            glove_path = Path(__file__).resolve().parent / glove_path
+        pretrained_emb = torch.from_numpy(
+            build_embedding_matrix(
+                vocab,
+                glove_path,
+                emb_dim=mp["embed_dim"],
+                seed=cfg.get("seed", 42),
+                cache_path=mp.get("glove_cache"),
+            )
+        )
     n_users, n_items = infer_num_ids(train_df, val_df, test_df)
     user_encoded = encode_review_docs(user_docs, vocab, n_users, mp["max_len"])
     item_encoded = encode_review_docs(item_docs, vocab, n_items, mp["max_len"])
@@ -140,11 +156,14 @@ def build_deepconn(cfg, device):
 
     model = DeepCoNNModel(
         vocab_size=len(vocab),
+        n_users=n_users,
+        n_items=n_items,
         embed_dim=mp["embed_dim"],
         out_channels=mp["out_channels"],
         kernel_size=mp["kernel_size"],
         latent_dim=mp["latent_dim"],
         dropout=mp["dropout"],
+        pretrained_emb=pretrained_emb,
     ).to(device)
     ranking_data = {
         "positives": test_df[["user_idx", "item_idx"]],
@@ -155,11 +174,58 @@ def build_deepconn(cfg, device):
     return model, train_loader, val_loader, test_loader, ranking_data
 
 
-def run_one(cfg_path: str):
-    cfg = load_config(cfg_path)
+SWEEP_PARAMETER_TARGETS = {
+    "lr": ("training", "lr"),
+    "batch_size": ("training", "batch_size"),
+    "weight_decay": ("training", "weight_decay"),
+    "dropout": ("model_params", "dropout"),
+    "gmf_dim": ("model_params", "gmf_dim"),
+    "latent_dim": ("model_params", "latent_dim"),
+}
+
+
+def _apply_sweep_parameters(cfg, sweep_parameters):
+    allowed = {
+        "ncf": {"lr", "batch_size", "weight_decay", "dropout", "gmf_dim"},
+        "deepconn": {"lr", "batch_size", "weight_decay", "dropout", "latent_dim"},
+    }
+    if cfg["model"] not in allowed:
+        raise ValueError(f"Model không hỗ trợ sweep: {cfg['model']}")
+
+    applied = []
+    for parameter in allowed[cfg["model"]]:
+        if parameter in sweep_parameters:
+            section, key = SWEEP_PARAMETER_TARGETS[parameter]
+            cfg[section][key] = sweep_parameters[parameter]
+            applied.append(parameter)
+    if "dataset" in sweep_parameters:
+        _apply_dataset(cfg, sweep_parameters["dataset"])
+        applied.append("dataset")
+    if not applied:
+        raise ValueError(
+            f"Sweep config không có tham số hợp lệ cho model '{cfg['model']}'."
+        )
+    print(f"[W&B Sweep] Applied parameters: {', '.join(sorted(applied))}")
+
+
+def _apply_dataset(cfg, dataset):
+    if dataset not in {"amazon", "yelp"}:
+        raise ValueError(f"Dataset không hỗ trợ: {dataset}")
+    cfg["data"]["dataset"] = dataset
+    cfg["data"]["dir"] = f"data/processed/{dataset}"
+
+
+def _run_config(cfg, cfg_path: str, wandb_settings, sweep: bool = False):
     project_root = Path(__file__).resolve().parent
     data_dir = resolve_data_dir(cfg["data"], project_root)
     cfg["data"]["dir"] = str(data_dir)
+    evaluation = cfg.get("evaluation", {})
+    negatives_path = Path(
+        evaluation.get("negatives_file", "data/processed/test_negatives.pkl")
+    )
+    if not negatives_path.is_absolute():
+        negatives_path = project_root / negatives_path
+    negative_samples = None if sweep else load_test_negatives(negatives_path)
     set_seed(cfg.get("seed", 42))
     device = get_device(cfg["training"].get("device", "auto"))
     dataset_name = cfg["data"].get("dataset", "unspecified")
@@ -186,7 +252,7 @@ def run_one(cfg_path: str):
         model.parameters(), lr=tr["lr"], weight_decay=tr["weight_decay"]
     )
 
-    model, _ = fit(
+    model, history = fit(
         model,
         train_loader,
         val_loader,
@@ -197,9 +263,12 @@ def run_one(cfg_path: str):
         epochs=tr["epochs"],
         patience=tr["patience"],
         ckpt_path=tr["checkpoint"],
+        wandb_settings=wandb_settings,
     )
 
-    evaluation = cfg.get("evaluation", {})
+    if sweep:
+        return {"best/val_rmse": min(epoch_metrics[2] for epoch_metrics in history)}
+
     k = evaluation.get("k", 10)
     negatives_per_positive = evaluation.get("negatives_per_positive", 99)
     batch_users = evaluation.get(
@@ -210,9 +279,9 @@ def run_one(cfg_path: str):
         ranking_data["positives"],
         ranking_data["seen_index"],
         device,
+        negative_samples=negative_samples,
         k=k,
         negatives_per_positive=negatives_per_positive,
-        seed=cfg.get("seed", 42),
         batch_users=batch_users,
         user_encoded=ranking_data.get("user_encoded"),
         item_encoded=ranking_data.get("item_encoded"),
@@ -220,6 +289,42 @@ def run_one(cfg_path: str):
     return evaluate_test(
         model, test_loader, device, cfg["model"], ranking_metrics=ranking_metrics
     )
+
+
+def run_one(cfg_path: str, sweep: bool = False, dataset: str = None):
+    cfg = load_config(cfg_path)
+    if dataset is not None and not sweep:
+        _apply_dataset(cfg, dataset)
+    wandb_config = cfg.get("wandb", {})
+    wandb_settings = None
+    should_finish_wandb = sweep or wandb_config.get("enabled", False)
+    try:
+        if sweep:
+            import wandb
+
+            project = wandb_config.get("project", "ncf-deepconn-experiment")
+            if wandb.run is None:
+                wandb.init(project=project, config=cfg)
+            _apply_sweep_parameters(cfg, wandb.config.as_dict())
+            if dataset is not None:
+                _apply_dataset(cfg, dataset)
+            cfg["training"]["checkpoint"] = str(
+                Path(__file__).resolve().parent
+                / f"best_{cfg['model']}_{wandb.run.id}.pt"
+            )
+            wandb_settings = {"project": project, "config": cfg}
+        elif wandb_config.get("enabled", False):
+            dataset_name = cfg["data"].get("dataset", "unspecified")
+            wandb_settings = {
+                "project": wandb_config.get("project", "ncf-deepconn-experiment"),
+                "name": wandb_config.get("name", f"{dataset_name}-{cfg['model']}"),
+                "mode": wandb_config.get("mode"),
+                "config": cfg,
+            }
+        return _run_config(cfg, cfg_path, wandb_settings, sweep=sweep)
+    finally:
+        if should_finish_wandb:
+            finish_wandb()
 
 
 def main():
@@ -232,11 +337,26 @@ def main():
         required=True,
         help="Đường dẫn tới file YAML. Dùng nhiều lần để chạy nhiều config.",
     )
+    parser.add_argument(
+        "--sweep",
+        action="store_true",
+        help="Apply hyperparameters supplied by a W&B Sweep agent.",
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=("amazon", "yelp"),
+        help="Override the dataset directory without editing the model config.",
+    )
     args = parser.parse_args()
+
+    if args.sweep and len(args.config) != 1:
+        parser.error("--sweep accepts exactly one --config.")
 
     results = {}
     for cfg_path in args.config:
-        results[Path(cfg_path).stem] = run_one(cfg_path)
+        results[Path(cfg_path).stem] = run_one(
+            cfg_path, sweep=args.sweep, dataset=args.dataset
+        )
 
     if len(results) > 1:
         first_result = next(iter(results.values()))

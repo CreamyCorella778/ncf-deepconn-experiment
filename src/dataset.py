@@ -20,7 +20,7 @@ class NCFDataset(Dataset):
 
 
 class DeepCoNNDataset(Dataset):
-    """Mỗi mẫu: (user_ids[max_len], item_ids[max_len], rating)."""
+    """Each sample contains IDs, their review tokens, and a rating."""
 
     def __init__(
         self,
@@ -43,6 +43,8 @@ class DeepCoNNDataset(Dataset):
         u = int(self.users[i])
         it = int(self.items[i])
         return (
+            torch.tensor(u, dtype=torch.long),
+            torch.tensor(it, dtype=torch.long),
             torch.from_numpy(self.user_encoded[u].astype(np.int64)),
             torch.from_numpy(self.item_encoded[it].astype(np.int64)),
             torch.tensor(self.ratings[i], dtype=torch.float32),

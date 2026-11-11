@@ -1,5 +1,8 @@
 model: deepconn
 seed: 42
+wandb:
+  enabled: false
+  project: ncf-deepconn-experiment
 
 data:
   dir: data/processed/amazon
@@ -11,7 +14,8 @@ data:
   item_reviews: item_reviews.pkl
 
 model_params:
-  embed_dim: 100
+  embed_dim: 300
+  glove_file: data/embeddings/glove.6B.300d.txt
   out_channels: 64
   kernel_size: 3
   latent_dim: 32
@@ -24,13 +28,14 @@ evaluation:
   k: 10
   negatives_per_positive: 99
   batch_users: 8
+  negatives_file: data/processed/test_negatives.pkl
 
 training:
   epochs: 15
   batch_size: 128
   lr: 0.001
   weight_decay: 1.0e-5
-  patience: 5
+  patience: 3
   num_workers: 0
   checkpoint: best_deepconn.pt
   device: auto

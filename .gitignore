@@ -1,5 +1,6 @@
 data/*
 !data/preprocess.py
+!data/statistics.py
 *.pt
 *.pkl
 *.parquet

@@ -1,0 +1,28 @@
+program: run_compare.py
+project: ncf-deepconn-experiment
+method: bayes
+metric:
+  name: best/val_rmse
+  goal: minimize
+parameters:
+  lr:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.005
+  batch_size:
+    values: [128, 256, 512]
+  weight_decay:
+    distribution: log_uniform_values
+    min: 0.0000001
+    max: 0.001
+  dropout:
+    values: [0.1, 0.2, 0.3, 0.4, 0.5]
+  gmf_dim:
+    values: [16, 32, 64, 128]
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - --config
+  - configs/ncf.yaml
+  - --sweep

@@ -1,7 +1,7 @@
 """Các độ đo đánh giá."""
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -79,15 +79,44 @@ def _sample_negatives(
     return negatives
 
 
+def sample_test_negatives(
+    positives: pd.DataFrame,
+    seen_index: SeenItemsIndex,
+    count: int = 99,
+    seed: int = 42,
+) -> dict:
+    """Create one fixed set of unseen items for each user in the test split."""
+    if count < 1:
+        raise ValueError("count must be at least 1.")
+    if positives.empty:
+        raise ValueError("Cannot sample negatives for an empty split.")
+
+    users = positives["user_idx"].to_numpy(dtype=np.int64, copy=False)
+    if np.any(users < 0) or np.any(users >= len(seen_index.offsets) - 1):
+        raise ValueError("Evaluation positives contain a user outside the model range.")
+
+    rng = np.random.default_rng(seed)
+    return {
+        int(user_id): _sample_negatives(
+            rng,
+            seen_index.for_user(int(user_id)),
+            seen_index.num_items,
+            count,
+            int(user_id),
+        ).tolist()
+        for user_id in dict.fromkeys(users.tolist())
+    }
+
+
 @torch.no_grad()
 def evaluate_sampled_ranking(
     model,
     positives: pd.DataFrame,
     seen_index: SeenItemsIndex,
     device,
+    negative_samples: Mapping[int, Sequence[int]],
     k: int = 10,
     negatives_per_positive: int = 99,
-    seed: int = 42,
     batch_users: int = 256,
     user_encoded: np.ndarray = None,
     item_encoded: np.ndarray = None,
@@ -103,6 +132,8 @@ def evaluate_sampled_ranking(
         raise ValueError("Both encoded review arrays must be supplied together.")
     if positives.empty:
         raise ValueError("Cannot calculate ranking metrics for an empty split.")
+    if not isinstance(negative_samples, Mapping):
+        raise ValueError("Negative samples must be a mapping of user IDs to item IDs.")
 
     users = positives["user_idx"].to_numpy(dtype=np.int64, copy=False)
     positive_items = positives["item_idx"].to_numpy(dtype=np.int64, copy=False)
@@ -114,8 +145,13 @@ def evaluate_sampled_ranking(
     ):
         raise ValueError("Evaluation positives contain an ID outside the model range.")
 
+    test_users = np.unique(users)
+    if len(negative_samples) != len(test_users) or any(
+        int(user_id) not in negative_samples for user_id in test_users
+    ):
+        raise ValueError("Negative samples must contain exactly the test users.")
+
     model.eval()
-    rng = np.random.default_rng(seed)
     candidate_count = negatives_per_positive + 1
     hits = 0
     ndcg = 0.0
@@ -127,14 +163,31 @@ def evaluate_sampled_ranking(
         batch_positive_items = positive_items[start:batch_end]
         candidates = np.empty((len(batch_users_ids), candidate_count), dtype=np.int64)
         candidates[:, 0] = batch_positive_items
-        for row, user_id in enumerate(batch_users_ids):
-            candidates[row, 1:] = _sample_negatives(
-                rng,
-                seen_index.for_user(int(user_id)),
-                seen_index.num_items,
-                negatives_per_positive,
-                int(user_id),
+        try:
+            batch_negatives = np.asarray(
+                [negative_samples[int(user_id)] for user_id in batch_users_ids],
+                dtype=np.int64,
             )
+        except (TypeError, ValueError) as error:
+            raise ValueError("Invalid negative samples for a test user.") from error
+        if batch_negatives.shape != (len(batch_users_ids), negatives_per_positive):
+            raise ValueError(
+                f"Each test user must have exactly {negatives_per_positive} negatives."
+            )
+        if np.any(batch_negatives < 0) or np.any(
+            batch_negatives >= seen_index.num_items
+        ):
+            raise ValueError("Negative samples contain an item outside the model range.")
+        for row, user_id in enumerate(batch_users_ids):
+            user_negatives = batch_negatives[row]
+            if (
+                len(np.unique(user_negatives)) != negatives_per_positive
+                or np.isin(user_negatives, seen_index.for_user(int(user_id))).any()
+            ):
+                raise ValueError(
+                    f"User {int(user_id)} has duplicate or previously seen negatives."
+                )
+        candidates[:, 1:] = batch_negatives
 
         if user_encoded is None:
             expanded_users = np.repeat(batch_users_ids, candidate_count)
@@ -144,6 +197,12 @@ def evaluate_sampled_ranking(
             )
             scores = model(user_tensor, item_tensor)
         else:
+            user_tensor = torch.tensor(
+                batch_users_ids, dtype=torch.long, device=device
+            )
+            item_tensor = torch.tensor(
+                candidates, dtype=torch.long, device=device
+            )
             user_reviews = torch.as_tensor(
                 user_encoded[batch_users_ids].astype(np.int64),
                 dtype=torch.long,
@@ -154,7 +213,9 @@ def evaluate_sampled_ranking(
                 dtype=torch.long,
                 device=device,
             ).reshape(len(batch_users_ids), candidate_count, -1)
-            scores = model.score_candidates(user_reviews, item_reviews)
+            scores = model.score_candidates(
+                user_tensor, item_tensor, user_reviews, item_reviews
+            )
 
         scores = scores.reshape(len(batch_users_ids), candidate_count)
         negative_items = torch.as_tensor(
@@ -190,9 +251,11 @@ def evaluate_sampled_ranking(
 def evaluate_rmse_mae(model, loader, device, rating_min=1.0, rating_max=5.0):
     model.eval()
     sq_err, abs_err, n = 0.0, 0.0, 0
-    for a, b, y in loader:
-        a, b, y = a.to(device), b.to(device), y.to(device)
-        pred = torch.clamp(model(a, b), rating_min, rating_max)
+    for batch in loader:
+        *inputs, y = batch
+        inputs = [value.to(device) for value in inputs]
+        y = y.to(device)
+        pred = torch.clamp(model(*inputs), rating_min, rating_max)
         diff = pred - y
         sq_err += torch.sum(diff**2).item()
         abs_err += torch.sum(torch.abs(diff)).item()

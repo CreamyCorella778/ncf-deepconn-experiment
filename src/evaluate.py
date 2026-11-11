@@ -1,6 +1,18 @@
 """Đánh giá mô hình trên tập test độc lập."""
 
+import pickle
+from pathlib import Path
+
 from .metrics import evaluate_rmse_mae
+
+
+def load_test_negatives(path: Path) -> dict:
+    """Load the precomputed test negatives from a pickle file."""
+    with path.open("rb") as file:
+        negative_samples = pickle.load(file)
+    if not isinstance(negative_samples, dict):
+        raise ValueError(f"Expected a user-to-negative-items dictionary in {path}.")
+    return negative_samples
 
 
 def evaluate_test(
@@ -27,4 +39,22 @@ def evaluate_test(
         )
         print(f"  NDCG@{k} = {ranking_metrics[f'ndcg@{k}']:.4f}")
     print("=" * 50)
-    return {"rmse": rmse, "mae": mae, **(ranking_metrics or {})}
+    results = {"rmse": rmse, "mae": mae, **(ranking_metrics or {})}
+
+    import wandb
+
+    if wandb.run is not None:
+        summary_metrics = {
+            "test/rmse": rmse,
+            "test/mae": mae,
+        }
+        if ranking_metrics is not None:
+            summary_metrics.update(
+                {
+                    f"test/{name}": ranking_metrics[name]
+                    for name in ranking_metrics
+                    if name.startswith(("hr@", "ndcg@"))
+                }
+            )
+        wandb.run.summary.update(summary_metrics)
+    return results
