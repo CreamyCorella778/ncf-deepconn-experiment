@@ -96,6 +96,13 @@ held-out test set. After tuning, run the regular training command with the same
 for that dataset are prepared before starting the sweep; the fixed test
 negative pickle is only needed for final test evaluation.
 
+To resume an existing sweep, pass its ID. If using a short sweep ID, also pass
+the project (and entity, if applicable):
+
+```powershell
+python run_sweep.py --model deepconn --dataset yelp --sweep_id abc123 --project ncf-deepconn-experiment
+```
+
 Pass both config paths with repeated `--config` options to run and compare
 both models. Test output includes RMSE, MAE, HR@10, and NDCG@10. Ranking
 metrics use one held-out positive and the 99 fixed items in

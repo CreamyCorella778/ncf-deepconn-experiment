@@ -21,6 +21,10 @@ def main():
     )
     parser.add_argument("--model", choices=tuple(SWEEP_CONFIGS), required=True)
     parser.add_argument("--dataset", choices=("amazon", "yelp"), required=True)
+    parser.add_argument(
+        "--sweep_id",
+        help="Reuse an existing sweep ID instead of creating a new sweep.",
+    )
     parser.add_argument("--count", type=int, default=30)
     parser.add_argument("--project")
     parser.add_argument("--entity")
@@ -28,24 +32,27 @@ def main():
     if args.count < 1:
         parser.error("--count must be a positive integer")
 
-    sweep_path = SWEEP_CONFIGS[args.model]
-    with sweep_path.open("r", encoding="utf-8") as file:
-        sweep_config = yaml.safe_load(file)
-    sweep_config.pop("program", None)
-    sweep_config.pop("command", None)
-    sweep_config["name"] = f"{args.model}-{args.dataset}-tuning"
-    sweep_config["parameters"]["dataset"] = {"value": args.dataset}
-
-    project = args.project or sweep_config["project"]
-
     import wandb
 
-    sweep_id = wandb.sweep(
-        sweep_config,
-        project=project,
-        entity=args.entity,
-    )
-    print(f"Created sweep: {sweep_id}")
+    if args.sweep_id:
+        sweep_id = args.sweep_id
+        project = args.project
+    else:
+        sweep_path = SWEEP_CONFIGS[args.model]
+        with sweep_path.open("r", encoding="utf-8") as file:
+            sweep_config = yaml.safe_load(file)
+        sweep_config.pop("program", None)
+        sweep_config.pop("command", None)
+        sweep_config["name"] = f"{args.model}-{args.dataset}-tuning"
+        sweep_config["parameters"]["dataset"] = {"value": args.dataset}
+        project = args.project or sweep_config["project"]
+        sweep_id = wandb.sweep(
+            sweep_config,
+            project=project,
+            entity=args.entity,
+        )
+        print(f"Created sweep: {sweep_id}")
+
     wandb.agent(
         sweep_id,
         function=lambda: run_one(
