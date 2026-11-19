@@ -1,4 +1,4 @@
-model: ncf
+﻿model: ncf
 seed: 42
 wandb:
   enabled: false
@@ -14,7 +14,7 @@ data:
 model_params:
   gmf_dim: 32
   mlp_dims: [64, 32, 16]
-  dropout: 0.2
+  dropout: 0.1
 
 evaluation:
   k: 10
@@ -25,8 +25,8 @@ evaluation:
 training:
   epochs: 15
   batch_size: 256
-  lr: 0.001
-  weight_decay: 1.0e-5
+  lr: 0.00035927
+  weight_decay: 1.3737e-7
   patience: 3
   num_workers: 0
   checkpoint: best_ncf.pt

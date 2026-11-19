@@ -54,15 +54,17 @@ reviews. The other interaction statistics use all three rating splits.
 
 ## Train and evaluate
 
-Choose a model config and pass the dataset on the command line:
+Use the config for the model/dataset pair you want to run:
 
 ```powershell
-python run_compare.py --config configs/ncf.yaml --dataset amazon
-python run_compare.py --config configs/deepconn.yaml --dataset yelp
+python run_compare.py --config configs/ncf.yaml
+python run_compare.py --config configs/ncf_yelp.yaml
+python run_compare.py --config configs/deepconn_amazon.yaml
+python run_compare.py --config configs/deepconn.yaml
 ```
 
-`--dataset` selects `data/processed/amazon` or `data/processed/yelp` without
-editing the model config. If omitted, the config's existing dataset is used.
+The four configs cover NCF/Amazon, NCF/Yelp, DeepCoNN/Amazon, and DeepCoNN/Yelp.
+`--dataset` can still override the dataset without editing a config.
 Relative data paths are resolved from the repository root, and the runner
 prints the selected dataset and absolute data directory before training.
 DeepCoNN loads 300-dimensional GloVe vectors from

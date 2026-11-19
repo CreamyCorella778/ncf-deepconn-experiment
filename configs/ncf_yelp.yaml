@@ -1,0 +1,33 @@
+model: ncf
+seed: 42
+wandb:
+  enabled: false
+  project: ncf-deepconn-experiment
+
+data:
+  dir: data/processed/yelp
+  dataset: yelp
+  train_file: train_ratings.parquet
+  val_file: val_ratings.parquet
+  test_file: test_ratings.parquet
+
+model_params:
+  gmf_dim: 32
+  mlp_dims: [64, 32, 16]
+  dropout: 0.1
+
+evaluation:
+  k: 10
+  negatives_per_positive: 99
+  batch_users: 256
+  negatives_file: data/processed/yelp/test_negatives.pkl
+
+training:
+  epochs: 15
+  batch_size: 256
+  lr: 0.00014827
+  weight_decay: 0.0000067522
+  patience: 3
+  num_workers: 0
+  checkpoint: best_ncf_yelp.pt
+  device: auto   # auto | cpu | cuda

@@ -1,0 +1,41 @@
+model: deepconn
+seed: 42
+wandb:
+  enabled: false
+  project: ncf-deepconn-experiment
+
+data:
+  dir: data/processed/amazon
+  dataset: amazon
+  train_file: train_ratings.parquet
+  val_file: val_ratings.parquet
+  test_file: test_ratings.parquet
+  user_reviews: user_reviews.pkl
+  item_reviews: item_reviews.pkl
+
+model_params:
+  embed_dim: 300
+  glove_file: data/embeddings/glove.6B.300d.txt
+  out_channels: 64
+  kernel_size: 3
+  latent_dim: 16
+  dropout: 0.5
+  max_len: 200
+  min_freq: 2
+  max_vocab: 50000
+
+evaluation:
+  k: 10
+  negatives_per_positive: 99
+  batch_users: 8
+  negatives_file: data/processed/amazon/test_negatives.pkl
+
+training:
+  epochs: 15
+  batch_size: 128
+  lr: 0.0011352
+  weight_decay: 1.2901e-7
+  patience: 3
+  num_workers: 0
+  checkpoint: best_deepconn_amazon.pt
+  device: auto
