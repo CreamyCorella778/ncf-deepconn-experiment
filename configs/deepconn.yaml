@@ -1,12 +1,12 @@
-model: deepconn
+﻿model: deepconn
 seed: 42
 wandb:
   enabled: false
   project: ncf-deepconn-experiment
 
 data:
-  dir: data/processed/amazon
-  dataset: amazon
+  dir: data/processed/yelp
+  dataset: yelp
   train_file: train_ratings.parquet
   val_file: val_ratings.parquet
   test_file: test_ratings.parquet
@@ -18,8 +18,8 @@ model_params:
   glove_file: data/embeddings/glove.6B.300d.txt
   out_channels: 64
   kernel_size: 3
-  latent_dim: 32
-  dropout: 0.3
+  latent_dim: 16
+  dropout: 0.4
   max_len: 200
   min_freq: 2
   max_vocab: 50000
@@ -28,12 +28,12 @@ evaluation:
   k: 10
   negatives_per_positive: 99
   batch_users: 8
-  negatives_file: data/processed/test_negatives.pkl
+  negatives_file: data/processed/yelp/test_negatives.pkl
 
 training:
   epochs: 15
   batch_size: 128
-  lr: 0.001
+  lr: 0.00013707
   weight_decay: 1.0e-5
   patience: 3
   num_workers: 0
