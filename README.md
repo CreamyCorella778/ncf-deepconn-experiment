@@ -35,7 +35,8 @@ python export_negatives.py --data-dir data/processed/amazon
 The script writes 99 unseen item IDs per test user to
 `data/processed/test_negatives.pkl` using seed 42. For Yelp, pass
 `--data-dir data/processed/yelp`; this regenerates the same output file for
-that dataset.
+that dataset. If the shared file is absent, evaluation also checks for
+`test_negatives.pkl` inside the selected dataset directory.
 
 ## Dataset statistics
 

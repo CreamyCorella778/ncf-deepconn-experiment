@@ -225,7 +225,25 @@ def _run_config(cfg, cfg_path: str, wandb_settings, sweep: bool = False):
     )
     if not negatives_path.is_absolute():
         negatives_path = project_root / negatives_path
-    negative_samples = None if sweep else load_test_negatives(negatives_path)
+    negative_samples = None
+    if not sweep:
+        default_negatives_path = (
+            project_root / "data" / "processed" / "test_negatives.pkl"
+        )
+        if (
+            negatives_path == default_negatives_path
+            and not negatives_path.is_file()
+            and (data_dir / negatives_path.name).is_file()
+        ):
+            negatives_path = data_dir / negatives_path.name
+            print(f"[Evaluation] Using dataset-specific negatives: {negatives_path}")
+        if not negatives_path.is_file():
+            raise FileNotFoundError(
+                f"Test negatives not found: {negatives_path}. "
+                f"Generate them with: python export_negatives.py "
+                f"--data-dir {data_dir} --output {negatives_path}"
+            )
+        negative_samples = load_test_negatives(negatives_path)
     set_seed(cfg.get("seed", 42))
     device = get_device(cfg["training"].get("device", "auto"))
     dataset_name = cfg["data"].get("dataset", "unspecified")
